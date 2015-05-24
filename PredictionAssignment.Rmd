@@ -1,0 +1,108 @@
+---
+title: "Practical Machine Learning"
+author: "Marcus Turnbo"
+date: "May 22, 2015"
+output: html_document
+---
+
+Executive Summary
+---
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. Our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+Loading Data
+---
+Download the training and test data for this analysis.  Read the CSV files into data tables.
+```{r}
+if (!file.exists('pml-training.csv')) {
+    download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', destfile='pml-training.csv', method='curl')
+}
+if (!file.exists('pml-testing.csv')) {
+    download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', destfile='pml-testing.csv', method='curl')
+}
+pmlTraining <- read.table('pml-training.csv', sep=',', header=TRUE)
+pmlTesting <- read.table('pml-testing.csv', sep=',', header=TRUE)
+```
+
+Cleaning Data
+---
+Use the fields that have the data relevant for the weight-lifting study.
+```{r}
+# get subset of fields
+namesSubset <- grep("classe|(^roll|^pitch|^yaw|^total_accel|^gyros|^accel|^magnet).*(_belt|_forearm|_arm|_belt|_dumbbell)", names(pmlTraining), value=T)
+pmlTrainingQualified <- subset(pmlTraining, select=namesSubset)
+pmlTrainingQualified$classe <- factor(pmlTrainingQualified$classe)
+# sapply(pmlTrainingQualified, function(x) is.factor(x))
+
+namesSubset <- grep("classe|(^roll|^pitch|^yaw|^total_accel|^gyros|^accel|^magnet).*(_belt|_forearm|_arm|_belt|_dumbbell)", names(pmlTesting), value=T)
+pmlTestingQualified <- subset(pmlTesting, select=namesSubset)
+```
+
+Data Partitioning
+---
+We have narrowed the training set down to 53 variables.  We will split that into 2 sets:  70% into  a training set and 30% into a test set.
+
+```{r}
+library(caret)
+set.seed(1973)
+inTrain <- createDataPartition(y=pmlTrainingQualified$classe, p=0.7, list=FALSE)
+training <- pmlTrainingQualified[inTrain,]
+testing <- pmlTrainingQualified[-inTrain,]
+```
+
+Machine Learning Models
+---
+Generate models using linear discriminant analysis, random forest, and boosted trees.  The accuracy will be compared to choose the most optimized model.
+```{r eval=FALSE}
+# LDA
+modelLDA <- train(classe ~ ., method='lda', data=training) 
+prediction <- predict(modelLDA, testing)
+cm <- confusionMatrix(prediction, testing$classe)
+accuracyLDA <- cm$overall['Accuracy'] 
+accuracyLDA
+
+# RF
+modelRF <- train(classe ~ ., method='rf', data=training) 
+prediction <- predict(modelRF, testing)
+cm <- confusionMatrix(prediction, testing$classe)
+accuracyRF <- cm$overall['Accuracy'] 
+
+# GBM
+modelGBM <- train(classe ~ ., method='gbm', data=training) 
+prediction <- predict(modelGBM, testing)
+cm <- confusionMatrix(prediction, testing$classe)
+accuracyGBM <- cm$overall['Accuracy'] 
+```
+
+Random Forest is the most accurate model at 99.3%.
+
+Cross Validation
+---
+A Principal Component Analysis is used to reduce the number of dimensions.
+```{r eval=FALSE}
+set.seed(1973)
+controlf <- trainControl(method='repeatedcv', number=10, repeats=10)
+modelRFCV <- train(classe ~ ., method="rf",  data=training, trControl=controlf)
+```
+
+Evaluate the Test Data
+---
+```{r eval=FALSE}
+prediction <- predict(modelRFCV, testing)
+prediction
+cm <- confusionMatrix(prediction, testing$classe)
+accuracyRF <- cm$overall['Accuracy'] 
+```
+
+```{r}
+print(cm)
+```
+
+Appendix
+---
+```{r}
+# correlation
+library(corrplot)
+par(mar=rep(0,4))
+M <- cor(training[,-53])
+corrplot(M, type='lower', method='square', order='hclust', tl.cex=.4)
+```
